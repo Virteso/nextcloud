@@ -1,0 +1,102 @@
+services:
+  db:
+    image: docker.io/library/postgres:17-alpine
+    restart: unless-stopped
+    volumes:
+      - /mnt/nextcloud/database:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a '$$REDIS_PASSWORD' ping | grep PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  app:
+    image: docker.io/library/nextcloud:fpm
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - /mnt/nextcloud/html:/var/www/html
+      - /mnt/nextcloud/data:/var/www/html/data
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+      REDIS_HOST: redis
+      REDIS_HOST_PASSWORD: ${REDIS_PASSWORD}
+
+      NEXTCLOUD_ADMIN_USER: ${NEXTCLOUD_ADMIN_USER}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
+      NEXTCLOUD_TRUSTED_DOMAINS: ${PUBLIC_IP}
+
+      APACHE_DISABLE_REWRITE_IP: "1"
+    networks:
+      default:
+      reverse-proxy:
+        aliases:
+          - nextcloud-app
+
+
+  nginx:
+    image: nginx/Dockerfile.nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/entrypoint.sh:/entrypoint.sh:ro
+      - letsencrypt:/etc/letsencrypt
+      - certbot_cache:/var/cache/certbot
+    environment:
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+      LETSENCRYPT_DOMAIN: ${LETSENCRYPT_DOMAIN}
+    depends_on:
+      - app
+    networks:
+      - reverse-proxy
+
+
+  cron:
+    image: docker.io/library/nextcloud:apache
+    restart: unless-stopped
+    volumes:
+      - /mnt/nextcloud/html:/var/www/html
+    entrypoint: /cron.sh
+    depends_on:
+      - app
+
+
+volumes:
+  letsencrypt:
+  certbot_cache:
+
+networks:
+  reverse-proxy:
+    name: nextcloud-proxy
