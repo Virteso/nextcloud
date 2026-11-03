@@ -74,7 +74,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/entrypoint.sh:/entrypoint.sh
+      - ./nginx/entrypoint.sh:/entrypoint.sh:ro
       - /mnt/nextcloud/html:/var/www/html:ro
       - letsencrypt:/etc/letsencrypt
       - certbot_cache:/var/cache/certbot
