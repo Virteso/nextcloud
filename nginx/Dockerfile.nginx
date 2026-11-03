@@ -12,14 +12,22 @@ RUN mkdir -p /etc/nginx/sites-enabled \
 	/var/lib/letsencrypt \
 	/var/cache/certbot
 
+# Copy nginx configuration
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
+COPY nginx/snippets/ /etc/nginx/snippets/
+COPY nginx/nextcloud.conf /etc/nginx/nextcloud.conf
+
 # Remove default nginx config that conflicts with our config
 RUN rm -f /etc/nginx/conf.d/default.conf
+
+# Copy favicon
+COPY nginx/favicon.ico /favicon.ico
 
 # Copy entrypoint script
 COPY nginx/entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
-EXPOSE 80 443
+EXPOSE 80 443 443/udp
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
