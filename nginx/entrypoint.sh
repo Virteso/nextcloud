@@ -18,7 +18,13 @@ if [ -z "$PUBLIC_IP" ]; then
     start_nginx
 fi
 
-generate_ssl_config() {
+generate_config() {
+    if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
+        SSL_AVAILABLE=1
+    else
+        SSL_AVAILABLE=0
+    fi
+
     cat > /etc/nginx/conf.d/nextcloud.conf << EOF
 upstream php-handler {
     server app:9000;
@@ -27,11 +33,54 @@ upstream php-handler {
 server {
     listen 80;
     server_name ${PUBLIC_IP} ${PUBLIC_IP}.nip.io ${PUBLIC_IP}.sslip.io localhost;
-    return 301 https://\$host\$request_uri;
+    server_tokens off;
+    root /var/www/html;
+    client_max_body_size 10G;
+
+    location ^~ /.well-known/acme-challenge/ {
+        try_files \$uri =404;
+    }
+
+    location / {
+EOF
+    if [ "$SSL_AVAILABLE" -eq 1 ]; then
+        cat >> /etc/nginx/conf.d/nextcloud.conf << EOF
+        return 301 https://\$host\$request_uri;
+    }
+
+    location ~ \.php(?:\$|/) {
+        return 404;
+    }
+EOF
+    else
+        cat >> /etc/nginx/conf.d/nextcloud.conf << EOF
+        try_files \$uri \$uri/ /index.php\$request_uri;
+    }
+
+    location ~ \.php(?:\$|/) {
+        fastcgi_split_path_info ^(.+?\.php)(/.*)\$;
+        set \$path_info \$fastcgi_path_info;
+        try_files \$fastcgi_script_name =404;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_param PATH_INFO \$path_info;
+        fastcgi_param HTTPS \$https if_not_empty;
+        fastcgi_pass php-handler;
+        fastcgi_intercept_errors on;
+        fastcgi_request_buffering off;
+    }
+EOF
+    fi
+    cat >> /etc/nginx/conf.d/nextcloud.conf << EOF
 }
+EOF
+
+    if [ "$SSL_AVAILABLE" -eq 1 ]; then
+        cat >> /etc/nginx/conf.d/nextcloud.conf << EOF
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name ${PUBLIC_IP} ${PUBLIC_IP}.nip.io ${PUBLIC_IP}.sslip.io localhost;
 
     ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
@@ -139,59 +188,22 @@ server {
     }
 }
 EOF
+    fi
 }
 
-echo "Managing certificates for $DOMAIN..."
+rm -f /etc/nginx/conf.d/*.conf.bak /etc/nginx/conf.d/default.conf 2>/dev/null || true
 
+echo "Checking for existing certificates..."
 if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
     echo "Certificate found for $DOMAIN"
     certbot renew --quiet --agree-tos --non-interactive 2>/dev/null || true
-    echo "Applying Nextcloud FastCGI configuration..."
-    rm -f /etc/nginx/conf.d/*.conf.bak /etc/nginx/conf.d/default.conf 2>/dev/null || true
-    generate_ssl_config
-    start_nginx
 else
-    echo "No certificate found. Starting temporary nginx for certificate generation..."
-
-    cat > /etc/nginx/conf.d/nextcloud.conf << EOF
-upstream php-handler {
-    server app:9000;
-}
-
-server {
-    listen 80;
-    server_name ${PUBLIC_IP} ${PUBLIC_IP}.nip.io ${PUBLIC_IP}.sslip.io localhost;
-    server_tokens off;
-    root /var/www/html;
-    client_max_body_size 10G;
-
-    location ^~ /.well-known/acme-challenge/ {
-        try_files \$uri =404;
-    }
-
-    location / {
-        try_files \$uri \$uri/ /index.php\$request_uri;
-    }
-
-    location ~ \.php(?:\$|/) {
-        fastcgi_split_path_info ^(.+?\.php)(/.*)\$;
-        set \$path_info \$fastcgi_path_info;
-        try_files \$fastcgi_script_name =404;
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-        fastcgi_param PATH_INFO \$path_info;
-        fastcgi_param HTTPS \$https if_not_empty;
-        fastcgi_pass php-handler;
-        fastcgi_intercept_errors on;
-        fastcgi_request_buffering off;
-    }
-}
-EOF
-
+    echo "No certificate found. Preparing for certificate issuance..."
+    generate_config
+    nginx -t 2>&1 || true
     nginx -g "daemon off;" &
     NGINX_PID=$!
     sleep 3
-
     echo "Requesting certificate for $DOMAIN..."
     certbot certonly \
         --webroot \
@@ -206,12 +218,11 @@ EOF
         kill $NGINX_PID 2>/dev/null || true
         exit 1
     }
-
-    echo "Certificate obtained successfully"
     kill $NGINX_PID 2>/dev/null || true
     wait $NGINX_PID 2>/dev/null || true
-
-    rm -f /etc/nginx/conf.d/*.conf.bak 2>/dev/null || true
-    generate_ssl_config
-    start_nginx
 fi
+
+echo "Applying configuration..."
+generate_config
+nginx -t 2>&1 || true
+start_nginx
