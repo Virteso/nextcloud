@@ -115,7 +115,7 @@ server {
     add_header X-Frame-Options                  "SAMEORIGIN"        always;
     add_header X-Permitted-Cross-Domain-Policies "none"              always;
     add_header X-Robots-Tag                     "noindex, nofollow" always;
-    add_header X-XSS-Protection                 "1; mode=block"     always;
+    add_header Strict-Transport-Security        "max-age=31536000; includeSubDomains" always;
 
     fastcgi_hide_header X-Powered-By;
 
@@ -177,7 +177,7 @@ server {
         add_header X-Frame-Options                  "SAMEORIGIN"        always;
         add_header X-Permitted-Cross-Domain-Policies "none"              always;
         add_header X-Robots-Tag                     "noindex, nofollow" always;
-        add_header X-XSS-Protection                 "1; mode=block"     always;
+        add_header Strict-Transport-Security        "max-age=31536000; includeSubDomains" always;
         access_log off;
     }
 
