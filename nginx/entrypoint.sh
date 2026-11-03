@@ -7,119 +7,65 @@ EMAIL="${LETSENCRYPT_EMAIL:-admin@example.com}"
 DOMAIN="${PUBLIC_IP}.nip.io"
 
 CERT_DIR="/etc/letsencrypt/live/$DOMAIN"
-# Function to start nginx
+
 start_nginx() {
     echo "Starting nginx..."
     exec nginx -g "daemon off;"
 }
 
-# Generate nginx config with SSL if we have a domain/IP
-if [ -n "$PUBLIC_IP" ]; then
-    cat > /etc/nginx/conf.d/nextcloud.conf << EOF
-server {
-    listen 80;
-    server_name ${PUBLIC_IP} ${PUBLIC_IP}.nip.io ${PUBLIC_IP}.sslip.io localhost;
-    return 301 https://\$host\$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name ${PUBLIC_IP} ${PUBLIC_IP}.nip.io ${PUBLIC_IP}.sslip.io localhost;
-
-    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers on;
-
-    client_max_body_size 10G;
-
-    location / {
-        proxy_pass http://app:80;
-
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-
-        proxy_request_buffering off;
-        proxy_buffering off;
-
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-}
-EOF
-else
-    cat > /etc/nginx/conf.d/nextcloud.conf << EOF
-server {
-    listen 80;
-    server_name _;
-
-    client_max_body_size 10G;
-
-    location / {
-        proxy_pass http://app:80;
-
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-
-        proxy_request_buffering off;
-        proxy_buffering off;
-
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-}
-EOF
+if [ -z "$PUBLIC_IP" ]; then
+    echo "No PUBLIC_IP set, starting nginx with static config..."
     start_nginx
 fi
 
-# Production mode: manage certificates for IP-based domain
-echo "Managing certificates..."
+echo "Managing certificates for $DOMAIN..."
 
-# Check if certificate exists and is valid
 if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
     echo "Certificate found for $DOMAIN"
-
-    # Try to renew certificate (runs renewal checks, only renews if needed)
-    echo "Checking certificate renewal..."
-    certbot renew \
-        --nginx \
-        --quiet \
-        --agree-tos \
-        --non-interactive \
-        2>/dev/null || true
-
+    certbot renew --nginx --quiet --agree-tos --non-interactive 2>/dev/null || true
     start_nginx
 else
     echo "No certificate found. Starting temporary nginx for certificate generation..."
 
-    # Create a temporary HTTP config for certbot
     cat > /etc/nginx/conf.d/nextcloud.conf << EOF
+upstream php-handler {
+    server app:9000;
+}
+
 server {
     listen 80;
     server_name ${PUBLIC_IP} ${PUBLIC_IP}.nip.io ${PUBLIC_IP}.sslip.io localhost;
+    server_tokens off;
+    root /var/www/html;
     client_max_body_size 10G;
+
+    location ^~ /.well-known/acme-challenge/ {
+        try_files \$uri =404;
+    }
+
     location / {
-        proxy_pass http://app:80;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        try_files \$uri \$uri/ /index.php\$request_uri;
+    }
+
+    location ~ \.php(?:\$|/) {
+        fastcgi_split_path_info ^(.+?\.php)(/.*)\$;
+        set \$path_info \$fastcgi_path_info;
+        try_files \$fastcgi_script_name =404;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_param PATH_INFO \$path_info;
+        fastcgi_param HTTPS \$https if_not_empty;
+        fastcgi_pass php-handler;
+        fastcgi_intercept_errors on;
+        fastcgi_request_buffering off;
     }
 }
 EOF
 
-    # Start nginx in background
     nginx -g "daemon off;" &
     NGINX_PID=$!
+    sleep 3
 
-    # Wait for nginx to start
-    sleep 2
-
-    # Run certbot with the nginx plugin
     echo "Requesting certificate for $DOMAIN..."
     certbot certonly \
         --nginx \
@@ -135,13 +81,14 @@ EOF
     }
 
     echo "Certificate obtained successfully"
-
-    # Stop background nginx
     kill $NGINX_PID 2>/dev/null || true
     wait $NGINX_PID 2>/dev/null || true
 
-    # Generate final config with SSL
     cat > /etc/nginx/conf.d/nextcloud.conf << EOF
+upstream php-handler {
+    server app:9000;
+}
+
 server {
     listen 80;
     server_name ${PUBLIC_IP} ${PUBLIC_IP}.nip.io ${PUBLIC_IP}.sslip.io localhost;
@@ -149,34 +96,114 @@ server {
 }
 
 server {
-    listen 443 ssl;
-    http2 on;
+    listen 443 ssl http2;
     server_name ${PUBLIC_IP} ${PUBLIC_IP}.nip.io ${PUBLIC_IP}.sslip.io localhost;
 
     ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers on;
+    server_tokens off;
 
+    root /var/www/html;
     client_max_body_size 10G;
+    client_body_timeout 3600s;
+    fastcgi_buffers 64 4K;
+
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 4;
+    gzip_min_length 256;
+    gzip_proxied expired no-cache no-store private no_last_modified no_etag auth;
+    gzip_types application/atom+xml text/javascript application/javascript application/json application/ld+json application/manifest+json application/rss+xml application/vnd.geo+json application/vnd.ms-fontobject application/wasm application/x-font-ttf application/x-web-app-manifest+json font/opentype image/bmp image/svg+xml image/x-icon text/cache-manifest text/css text/plain text/vcard text/vnd.rim.location.xloc text/vtt text/x-component text/x-cross-domain-policy;
+
+    add_header Referrer-Policy                   "no-referrer"       always;
+    add_header X-Content-Type-Options            "nosniff"           always;
+    add_header X-Download-Options               "noopen"            always;
+    add_header X-Frame-Options                  "SAMEORIGIN"        always;
+    add_header X-Permitted-Cross-Domain-Policies "none"              always;
+    add_header X-Robots-Tag                     "noindex, nofollow" always;
+    add_header X-XSS-Protection                 "1; mode=block"     always;
+
+    fastcgi_hide_header X-Powered-By;
+
+    index index.php index.html /index.php\$request_uri;
+
+    location = / {
+        if ( \$http_user_agent ~ ^DavClnt ) {
+            return 302 /remote.php/webdav/\$is_args\$args;
+        }
+    }
+
+    location = /robots.txt {
+        allow all;
+        log_not_found off;
+        access_log off;
+    }
+
+    location ^~ /.well-known {
+        allow all;
+        location ~ ^/\.well-known/(?:carddav|caldav) {
+            return 301 \$scheme://\$host/remote.php/dav;
+        }
+        location ~ ^/\.well-known/(?:acme-challenge|pki-validation) {
+            try_files \$uri \$uri/ =404;
+        }
+        try_files \$uri \$uri/ =404;
+    }
+
+    location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:\$|/)  {
+        return 404;
+    }
+    location ~ ^/(?:\.|autotest|occ|issue|indie|db_|console) {
+        return 404;
+    }
+
+    location ~ \.php(?:\$|/) {
+        rewrite ^/(?!index|remote|public|cron|core\/ajax\/update|status|ocs\/v[12]|updater\/.+|ocs-provider\/.+|.+\/richdocumentscode(_arm64)?\/proxy) /index.php\$request_uri;
+        fastcgi_split_path_info ^(.+?\.php)(/.*)\$;
+        set \$path_info \$fastcgi_path_info;
+        try_files \$fastcgi_script_name =404;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_param PATH_INFO \$path_info;
+        fastcgi_param HTTPS on;
+        fastcgi_param modHeadersAvailable true;
+        fastcgi_param front_controller_active true;
+        fastcgi_pass php-handler;
+        fastcgi_intercept_errors on;
+        fastcgi_request_buffering off;
+        fastcgi_max_temp_file_size 0;
+    }
+
+    location ~ \.(?:css|js|mjs|svg|gif|png|jpg|ico|wasm|tflite|map|ogg|flac)\$ {
+        try_files \$uri /index.php\$request_uri;
+        add_header Cache-Control                     "public, max-age=15778463, immutable";
+        add_header Referrer-Policy                   "no-referrer"       always;
+        add_header X-Content-Type-Options            "nosniff"           always;
+        add_header X-Download-Options               "noopen"            always;
+        add_header X-Frame-Options                  "SAMEORIGIN"        always;
+        add_header X-Permitted-Cross-Domain-Policies "none"              always;
+        add_header X-Robots-Tag                     "noindex, nofollow" always;
+        add_header X-XSS-Protection                 "1; mode=block"     always;
+        access_log off;
+    }
+
+    location ~ \.woff2?\$ {
+        try_files \$uri /index.php\$request_uri;
+        expires 7d;
+        access_log off;
+    }
+
+    location /remote {
+        return 301 \$scheme://\$host/remote.php\$request_uri;
+    }
 
     location / {
-        proxy_pass http://app:80;
-
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-
-        proxy_request_buffering off;
-        proxy_buffering off;
-
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
+        try_files \$uri \$uri/ /index.php\$request_uri;
     }
 }
 EOF
 
-    # Start nginx normally
     start_nginx
 fi

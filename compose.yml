@@ -57,12 +57,10 @@ services:
       NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
       NEXTCLOUD_TRUSTED_DOMAINS: ${PUBLIC_IP} ${PUBLIC_IP}.nip.io ${PUBLIC_IP}.sslip.io localhost 127.0.0.1
 
-      APACHE_DISABLE_REWRITE_IP: "1"
       TRUSTED_PROXIES: 172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
+      OVERWRITEPROTOCOL: https
     networks:
-      reverse-proxy:
-        aliases:
-          - nextcloud-app
+      - reverse-proxy
 
 
   nginx:
@@ -76,6 +74,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
+      - /mnt/nextcloud/html:/var/www/html:ro
       - letsencrypt:/etc/letsencrypt
       - certbot_cache:/var/cache/certbot
     environment:
@@ -96,6 +95,8 @@ services:
     entrypoint: /cron.sh
     depends_on:
       - app
+    networks:
+      - reverse-proxy
 
 
 volumes:
