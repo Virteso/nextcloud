@@ -1,8 +1,0 @@
-# Set .mjs and .wasm MIME types
-# Either include it in the default mime.types list
-# and include that list explicitly or add the file extension
-# only for Nextcloud like below:
-types {
-	text/javascript mjs;
-	application/wasm wasm;
-}

@@ -89,7 +89,7 @@ services:
       - "${PORT_HTTPS:-443}:443/tcp"
       - "${PORT_HTTPS:-443}:443/udp"
     volumes:
-      - ./nginx/conf:/etc/nginx/conf
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./nginx/includes:/etc/nginx/includes:ro
       - ./nginx/nextcloud.conf:/etc/nginx/nextcloud.conf
       - ./nginx/favicon.ico:/favicon.ico:ro
@@ -107,17 +107,17 @@ services:
       - reverse-proxy
 
 
-  cron:
-    image: localhost/nextcloud-app:latest
-    restart: unless-stopped
-    volumes:
-      - /mnt/nextcloud/html:/var/www/html
-      - /mnt/nextcloud/data:/var/www/html/data
-    entrypoint: /cron.sh
-    depends_on:
-      - app
-    networks:
-      - backend
+  # cron:
+  #   image: localhost/nextcloud-app:latest
+  #   restart: unless-stopped
+  #   volumes:
+  #     - /mnt/nextcloud/html:/var/www/html
+  #     - /mnt/nextcloud/data:/var/www/html/data
+  #   entrypoint: /cron.sh
+  #   depends_on:
+  #     - app
+  #   networks:
+  #     - backend
 
 
 volumes:
