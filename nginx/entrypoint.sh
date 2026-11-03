@@ -110,7 +110,7 @@ server {
     gzip_types application/atom+xml text/javascript application/javascript application/json application/ld+json application/manifest+json application/rss+xml application/vnd.geo+json application/vnd.ms-fontobject application/wasm application/x-font-ttf application/x-web-app-manifest+json font/opentype image/bmp image/svg+xml image/x-icon text/cache-manifest text/css text/plain text/vcard text/vnd.rim.location.xloc text/vtt text/x-component text/x-cross-domain-policy;
 
     add_header Referrer-Policy                   "no-referrer"       always;
-    add_header X-Content-Type-Options            "nosniff"           always;
+    add_header X-Content-Type-Options            ""                  always;
     add_header X-Download-Options               "noopen"            always;
     add_header X-Frame-Options                  "SAMEORIGIN"        always;
     add_header X-Permitted-Cross-Domain-Policies "none"              always;
@@ -172,7 +172,7 @@ server {
         try_files \$uri /index.php\$request_uri;
         add_header Cache-Control                     "public, max-age=15778463, immutable";
         add_header Referrer-Policy                   "no-referrer"       always;
-        add_header X-Content-Type-Options            "nosniff"           always;
+        add_header X-Content-Type-Options            "";
         add_header X-Download-Options               "noopen"            always;
         add_header X-Frame-Options                  "SAMEORIGIN"        always;
         add_header X-Permitted-Cross-Domain-Policies "none"              always;
