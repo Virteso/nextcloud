@@ -90,7 +90,7 @@ services:
       - "${PORT_HTTPS:-443}:443/udp"
     volumes:
       - ./nginx/conf:/etc/nginx/conf
-      - ./nginx/snippets:/etc/nginx/snippets:ro
+      - ./nginx/includes:/etc/nginx/includes:ro
       - ./nginx/nextcloud.conf:/etc/nginx/nextcloud.conf
       - ./nginx/favicon.ico:/favicon.ico:ro
       - ./nginx/entrypoint.sh:/entrypoint.sh:ro

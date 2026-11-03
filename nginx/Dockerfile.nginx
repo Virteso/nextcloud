@@ -14,7 +14,7 @@ RUN mkdir -p /etc/nginx/sites-enabled \
 
 # Copy nginx configuration
 COPY nginx/nginx.conf /etc/nginx/nginx.conf
-COPY nginx/snippets/ /etc/nginx/snippets/
+COPY nginx/includes/ /etc/nginx/includes/
 COPY nginx/nextcloud.conf /etc/nginx/nextcloud.conf
 
 # Remove default nginx config that conflicts with our config

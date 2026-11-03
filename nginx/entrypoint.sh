@@ -17,10 +17,7 @@ EMAIL="${LETSENCRYPT_EMAIL:-admin@example.com}"
 CERT_DIR="/etc/letsencrypt/live/$DOMAIN"
 
 DYNAMIC_DIR="/etc/nginx/nextcloud"
-HTTP_ENABLED_DIR="$DYNAMIC_DIR/enabled/http"
-HTTPS_ENABLED_DIR="$DYNAMIC_DIR/enabled/https"
 CERT_LINK_DIR="$DYNAMIC_DIR/certs"
-SNIPPET_DIR="/etc/nginx/conf.d"
 
 start_nginx() {
     echo "Starting nginx..."
