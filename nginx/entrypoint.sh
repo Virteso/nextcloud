@@ -149,7 +149,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name ${PUBLIC_IP} ${PUBLIC_IP}.nip.io ${PUBLIC_IP}.sslip.io localhost;
 
     ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;

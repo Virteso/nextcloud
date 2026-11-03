@@ -60,7 +60,6 @@ services:
       APACHE_DISABLE_REWRITE_IP: "1"
       TRUSTED_PROXIES: 172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
     networks:
-      default:
       reverse-proxy:
         aliases:
           - nextcloud-app
@@ -76,7 +75,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d
       - letsencrypt:/etc/letsencrypt
       - certbot_cache:/var/cache/certbot
     environment:
@@ -89,10 +88,11 @@ services:
 
 
   cron:
-    image: docker.io/library/nextcloud:apache
+    image: localhost/nextcloud-app:latest
     restart: unless-stopped
     volumes:
       - /mnt/nextcloud/html:/var/www/html
+      - /mnt/nextcloud/data:/var/www/html/data
     entrypoint: /cron.sh
     depends_on:
       - app
