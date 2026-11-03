@@ -36,6 +36,10 @@ server {
     server_tokens off;
     root /var/www/html;
     client_max_body_size 10G;
+    types {
+        application/octet-stream bin;
+    }
+    default_type application/octet-stream;
 
     location ^~ /.well-known/acme-challenge/ {
         try_files \$uri =404;
@@ -93,6 +97,10 @@ server {
     client_max_body_size 10G;
     client_body_timeout 3600s;
     fastcgi_buffers 64 4K;
+    types {
+        application/octet-stream bin;
+    }
+    default_type application/octet-stream;
 
     gzip on;
     gzip_vary on;
