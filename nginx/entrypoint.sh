@@ -37,6 +37,7 @@ server {
     root /var/www/html;
     client_max_body_size 10G;
     include /etc/nginx/mime.types;
+    types { application/javascript js mjs; text/javascript mjs; }
     default_type application/octet-stream;
 
     location ^~ /.well-known/acme-challenge/ {
@@ -96,6 +97,7 @@ server {
     client_body_timeout 3600s;
     fastcgi_buffers 64 4K;
     include /etc/nginx/mime.types;
+    types { application/javascript js mjs; text/javascript mjs; }
     default_type application/octet-stream;
     gzip on;
     gzip_vary on;
