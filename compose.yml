@@ -15,6 +15,7 @@ services:
       retries: 5
       start_period: 10s
 
+
   redis:
     image: docker.io/library/redis:7-alpine
     restart: unless-stopped
@@ -28,41 +29,6 @@ services:
       timeout: 5s
       retries: 5
 
-  nginx-proxy:
-    image: docker.io/nginxproxy/nginx-proxy:latest
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      TRUSTED_PROXIES: 172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
-      ENABLE_IPV6: "false"
-    volumes:
-      - certs:/etc/nginx/certs:ro
-      - vhost:/etc/nginx/vhost.d
-      - html:/usr/share/nginx/html
-      - /run/user/1000/podman/podman.sock:/tmp/docker.sock:ro
-    networks:
-      - proxy
-
-  acme-companion:
-    image: docker.io/nginxproxy/acme-companion:latest
-    restart: unless-stopped
-    depends_on:
-      - nginx-proxy
-    environment:
-      DEFAULT_EMAIL: ${LETSENCRYPT_EMAIL}
-      NGINX_PROXY_CONTAINER: nginx-proxy
-      # Uncomment for testing to avoid rate limits
-      # ACME_CA_URI: https://acme-staging-v02.api.letsencrypt.org/directory
-    volumes:
-      - certs:/etc/nginx/certs:rw
-      - vhost:/etc/nginx/vhost.d
-      - html:/usr/share/nginx/html
-      - /run/user/1000/podman/podman.sock:/var/run/docker.sock:ro
-      - acme:/etc/acme.sh
-    networks:
-      - proxy
 
   app:
     build:
@@ -93,14 +59,34 @@ services:
 
       APACHE_DISABLE_REWRITE_IP: "1"
       TRUSTED_PROXIES: 172.16.0.0/12 192.168.0.0/16 10.0.0.0/8
-
-      VIRTUAL_HOST: ${PUBLIC_IP}.nip.io,${PUBLIC_IP}.sslip.io
-      VIRTUAL_PORT: 80
-      LETSENCRYPT_HOST: ${PUBLIC_IP}.nip.io
-      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
     networks:
       default:
-      proxy:
+      reverse-proxy:
+        aliases:
+          - nextcloud-app
+
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile.nginx
+    image: localhost/nextcloud-nginx:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - letsencrypt:/etc/letsencrypt
+      - certbot_cache:/var/cache/certbot
+    environment:
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+      PUBLIC_IP: ${PUBLIC_IP}
+    depends_on:
+      - app
+    networks:
+      - reverse-proxy
+
 
   cron:
     image: docker.io/library/nextcloud:apache
@@ -111,12 +97,11 @@ services:
     depends_on:
       - app
 
+
 volumes:
-  certs:
-  vhost:
-  html:
-  acme:
+  letsencrypt:
+  certbot_cache:
 
 networks:
-  proxy:
+  reverse-proxy:
     name: nextcloud-proxy
