@@ -58,6 +58,8 @@ services:
     volumes:
       - /mnt/nextcloud/html:/var/www/html
       - /mnt/nextcloud/data:/var/www/html/data
+      # Shared with nginx for the PHP-FPM Unix socket
+      - php_socket:/run/php-fpm
     environment:
       POSTGRES_HOST: db
       POSTGRES_DB: ${POSTGRES_DB}
@@ -95,6 +97,8 @@ services:
       - ./nginx/favicon.ico:/favicon.ico:ro
       - ./nginx/entrypoint.sh:/entrypoint.sh:ro
       - /mnt/nextcloud/html:/var/www/html:ro
+      # Shared with app for the PHP-FPM Unix socket
+      - php_socket:/run/php-fpm:ro
       - letsencrypt:/etc/letsencrypt
       - certbot_cache:/var/cache/certbot
     environment:
@@ -123,6 +127,7 @@ services:
 volumes:
   letsencrypt:
   certbot_cache:
+  php_socket:
 
 networks:
   backend:

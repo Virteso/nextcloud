@@ -51,6 +51,8 @@ RUN mkdir -p \
 ;
 
 COPY supervisord.conf /
+# Listen on a Unix socket shared with the nginx container instead of TCP 9000.
+COPY php-fpm-socket.conf /usr/local/etc/php-fpm.d/zz-socket.conf
 
 ENV NEXTCLOUD_UPDATE=1
 
